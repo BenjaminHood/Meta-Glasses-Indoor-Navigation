@@ -37,4 +37,34 @@ class ActorCritic(nn.Module):
         """Convert a sampled action tensor into env.step()"""
         raise NotImplementedError
     
+class CategoricalPolicy(ActorCritic):
+    """Discrete Actions"""
     
+    is_discrete = True
+    
+    def __init__(self, obs_dim: int, n_actions: int, hidden_sizes=(64, 64)):
+        super().__init__()
+        self.policy_net = mlp(obs_dim, hidden_sizes, n_actions)
+        self.value_net = mlp(obs_dim, hidden_sizes, 1)
+        self.action_shape = ()
+        self.action_dtype = np.int64
+        
+    def _dist(self, obs):
+        return Categorical(logits=self.policy_net(obs)) #retuen categorical probs
+    
+    def act(self, obs):
+        dist = self._dist(obs)
+        action = dist.sample()
+        
+        return action, dist.log_prob(action), self.value_net(obs).squeeze(-1)
+    
+    def evaluate(self, obs, actions):
+        dist = self._dist(obs)
+        
+        return dist.log_prob(actions), dist.entropy(), self.value_net(obs).squeeze(-1)
+    
+    def to_env_action(self, action):
+        return int(action.item())
+    
+    
+        
