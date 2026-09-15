@@ -1,4 +1,3 @@
-"""Training Configs"""
 
 from dataclasses import dataclass, fields
 from pathlib import Path
