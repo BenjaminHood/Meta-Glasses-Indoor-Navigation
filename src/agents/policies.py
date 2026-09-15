@@ -66,5 +66,53 @@ class CategoricalPolicy(ActorCritic):
     def to_env_action(self, action):
         return int(action.item())
     
+class GaussianPolicy(ActorCritic):
+    """Continous actions"""
     
+    is_discrete = False  
+    
+    def __init__(self, obs_dim: int, act_dim: int, hidden_sizes=(64, 64), init_log_std = 0.5):
+       super().__init__()
+       self.policy_net = mlp(obs_dim, hidden_sizes, act_dim)
+       self.value_net = mlp(obs_dim, hidden_sizes, 1)
+       self.log_std = nn.Parameter(torch.full((act_dim), float(init_log_std)))
+       self.action_shape = (act_dim)
+       self.action_dtype = np.int32
+       
+    def _dist(self, obs):
+        return Normal(self.policy_net(obs), self.log_std.exp())
+    
+    def act(self, obs):
+        dist = self._dist(obs)
+        action = dist.sample()
         
+        # sum over action dims
+        return action, dist.log_prob(action).sum(-1), self.value_net(obs).squeeze(-1)
+    
+    def evaluate(self, obs, actions):
+        dist = self._dist(obs)
+        
+        return (
+            dist.log_prob(actions).sum(-1),
+            dist.entropy().sum(-1),
+            self.value_net(obs).squeeze(-1)
+        )
+    
+    def to_env_action(self, action):
+        return action.squeeze(0).cpu().numpy()
+    
+def make_policy(obs_space, action_space, cfg) -> ActorCritic:
+    obs_dim = int(np.prod(obs_space.shape))
+    
+    kind  = cfg.policy
+    if kind == "auto":
+        if isinstance(action_space, gym.spaces.Discrete):
+            kind = "categorical"
+        else:
+            kind = "gaussian"
+            
+    if kind == "categorical":
+        return CategoricalPolicy(obs_dim, action_space.n, cfg.hidden_sizes)
+    if kind == "gaussian":
+        return GaussianPolicy(obs_dim, int(np.prod(action_space.shape)), cfg.hidden_sizes)
+    raise ValueError(f"unkown policy type: {cfg.policy}")
