@@ -36,4 +36,30 @@ def collection_rollout(env, policy, cfg, obs, device):
         done_buf[t] = float(terminated or truncated)
         running += reward
         
+        # if the episode ended with termination compute the 
+        # value for the next state
+        if terminated and not truncated:
+            with torch.no_grad():
+                final = torch.as_tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
+                _, boot = policy.act(final)[2], None
+            rew_buf += cfg.gamma * float(_)
+            
+        # reset the env if the epi is terminated or truncated
+        if terminated or truncated:
+            episode_returns.append(running)
+            running = 0.0
+            next_obs, _ = env.reset()
+            
+        obs = next_obs
         
+    with torch.no_grad():
+        last = torch.as_tensor(obs, dtype=torch.float32, device=device).unsqueeze(0)
+        last_value = policy.act(final)[2].item()
+        
+    batch = {
+        "Obs": obs_buf, "Action": act_buf, "logp": logp_buf,
+        "rewards": rew_buf, "values": val_buf, "dones": done_buf,
+        "last_value": last_value
+    }
+    
+    return batch, obs, episode_returns
